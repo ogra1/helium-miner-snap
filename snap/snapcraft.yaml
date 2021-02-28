@@ -68,7 +68,7 @@ apps:
       - network-control
       - hardware-observe
     slots:
-      - dbus-svc
+      - com-helium-miner
   helium-miner:
     command: miner/bin/miner
     environment:
