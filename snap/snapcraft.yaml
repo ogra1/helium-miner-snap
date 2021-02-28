@@ -87,7 +87,7 @@ apps:
       - hardware-observe
 
 slots:
-  dbus-svc:
+  com-helium-miner:
     interface: dbus
     bus: system
     name: com.helium.Miner
