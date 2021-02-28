@@ -1,0 +1,57 @@
+#! /bin/sh
+
+# copy default config to writable place if it does not exist yet
+if [ ! -e $SNAP_COMMON/config/sys.config ]; then
+  mkdir -p $SNAP_COMMON/config
+  cp $SNAP/miner/releases/0.1.0/sys.config $SNAP_COMMON/config/
+  # set key to undefined to be able to run without i2c attached key
+  sed -i 's/{key, .*$/{key, undefined},/' \
+    $SNAP_COMMON/config/sys.config
+fi
+
+# copy blockchain-api to writable place if it does not exist yet
+if [ ! -e $SNAP_COMMON/update/genesis ]; then
+  mkdir -p $SNAP_COMMON/update
+  cp $SNAP/miner/update/genesis $SNAP_COMMON/update/genesis
+fi
+
+# put fake lsb_release in place if it is size zero
+if [ "$(stat -c %s $SNAP_COMMON/.lsb_release)" = "0" ]; then
+  grep PRETTY_NAME /etc/os-release | sed 's/^.*=//' | \
+	  tr -d '"' >$SNAP_COMMON/.lsb_release
+fi
+
+# only start if all interfaces are connected
+DISABLED=""
+
+disable(){
+  snapctl stop --disable ${SNAP_NAME}.daemon
+}
+
+if ! snapctl is-connected log-observe; then
+  logger -t ${SNAP_NAME} "need read access to logs !!!"
+  logger -t ${SNAP_NAME} "please run snap connect ${SNAP_NAME}:log-observe"
+  DISABLED="true"
+fi
+
+if ! snapctl is-connected hardware-observe; then
+  logger -t ${SNAP_NAME} "need read access to hardware information !!!"
+  logger -t ${SNAP_NAME} "please run snap connect ${SNAP_NAME}:hardware-observe"
+  DISABLED="true"
+fi
+
+if ! snapctl is-connected network-control; then
+  logger -t ${SNAP_NAME} "need access to control the network !!!"
+  logger -t ${SNAP_NAME} "please run snap connect ${SNAP_NAME}:network-control"
+  DISABLED="true"
+fi
+
+if [ -n "$DISABLED" ]; then
+  logger -t ${SNAP_NAME} "necessary interfaces not connected, disabling service for the moment"
+  disable
+  exit 0
+fi
+
+if snapctl services ${SNAP_NAME}.daemon | grep -q inactive; then
+  snapctl start --enable ${SNAP_NAME}.daemon 2>&1 || true
+fi

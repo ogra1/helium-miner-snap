@@ -1,0 +1,158 @@
+name: helium-miner
+base: core20
+adopt-info: miner
+summary: Miner for helium blockchain (developer version)
+description: |
+  +++++ NOTE !!! +++++
+  This miner *will not mine HNT* for you. Actual mining requires hardware keys
+  to be available on your gateway that are only available on actual helium miner
+  gateway hardware ! Without such hardware it will run, but not generate HNT.
+
+  If you are running on an actual HNT Gateway, please edit the {key, ...} entry
+  in /var/snap/helium-miner/common/config/sys.config to make it talk to the i2c
+  slot holding the key.
+
+  For more detail visit https://docs.helium.com/mine-hnt/
+  +++++ NOTE !!! +++++
+
+  Miner for the helium blockchain. This snap requires multiple interfaces to
+  be connected before the miner daemon can start.
+
+      snap connect helium-miner:log-observe
+      snap connect helium-miner:hardware-observe
+      snap connect helium-miner:network-control
+
+  After connecting these interfaces the miner daemon will automatically start.
+  All variable data and log files are stored under /var/snap/helium-miner/common
+
+  If you run this snap on an officially approved helium hotspot, you can allow
+  acess to an i2c attached key via 
+
+      snap connect helium-miner:i2c pi:i2c-1
+
+  To talk directly to the miner daemon you can use the shipped
+  helium-miner command like below.
+
+      helium-miner info summary
+
+  The genesis blockchain api can be found in
+  /var/snap/helium-miner/common/miner/update/genesis
+  You can use the "helium-miner genesis load ..." command
+  pointing to that directory to load and update the blockchain api.
+
+  The miner daemon registers as com.helium.Miner to the system dbus of the host
+
+grade: stable
+confinement: strict
+
+architectures:
+  - build-on: arm64
+    run-on: arm64
+
+apps:
+  daemon:
+    command: miner/bin/miner start
+    daemon: forking
+    environment:
+      COOKIE: "miner"
+      HOME: "$SNAP_COMMON"
+      PATH: "/usr/lib/erlang/bin:$SNAP/miner/bin:$PATH"
+      RELX_OUT_FILE_PATH: "/tmp"
+      RELX_CONFIG_PATH: "$SNAP_COMMON/config/sys"
+      RUNNER_LOG_DIR: "$SNAP_COMMON/log"
+    plugs:
+      - i2c
+      - log-observe
+      - network
+      - network-bind
+      - network-control
+      - hardware-observe
+    slots:
+      - dbus-svc
+  helium-miner:
+    command: miner/bin/miner
+    environment:
+      COOKIE: "miner"
+      HOME: "$SNAP_COMMON"
+      PATH: "/usr/lib/erlang/bin:$SNAP/miner/bin:$PATH"
+      RELX_OUT_FILE_PATH: "/tmp"
+      RELX_CONFIG_PATH: "$SNAP_COMMON/config/sys"
+      RUNNER_LOG_DIR: "$SNAP_COMMON/log"
+    plugs:
+      - i2c
+      - log-observe
+      - network
+      - network-bind
+      - network-control
+      - hardware-observe
+
+slots:
+  dbus-svc:
+    interface: dbus
+    bus: system
+    name: com.helium.Miner
+
+layout:
+  /usr/lib/erlang:
+    bind: $SNAP/usr/lib/erlang
+  /var/log/miner:
+    bind: $SNAP_COMMON/log
+  /var/data:
+    bind: $SNAP_COMMON/data
+  /opt/miner/update:
+    bind: $SNAP_COMMON/update
+  /etc/lsb_release:
+    bind-file: $SNAP_COMMON/.lsb_release
+
+parts:
+  erlang:
+    plugin: dump
+    source: https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_22.3.4.2-1~ubuntu~focal_arm64.deb
+    stage-packages:
+      - libtinfo6
+  miner:
+    after: [ erlang ]
+    plugin: make
+    source: https://github.com/helium/miner.git
+    build-packages:
+      - autoconf
+      - automake
+      - bison
+      - cargo
+      - cmake
+      - doxygen
+      - flex
+      - g++
+      - libclang-dev
+      - libdbus-1-dev
+      - libgmp-dev
+      - libsnappy-dev
+      - libsodium-dev
+      - libssl-dev
+      - libtool
+    stage-packages:
+      - libsodium23
+    build-environment:
+      - PATH: "${SNAPCRAFT_STAGE}/usr/lib/erlang/bin:$PATH"
+      - CFLAGS: "-U__sun__"
+      - ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_SNAPPY=ON -DWITH_BUNDLE_LZ4=ON"
+      - ERL_COMPILER_OPTIONS: "[deterministic]"
+    override-build: |
+      # use erlang from staging dir
+      ln -sf $SNAPCRAFT_STAGE/usr/lib/erlang /usr/lib/erlang
+      # set package version from miner upstream version
+      VER="$(grep -m1 "{release, {miner," $SNAPCRAFT_PART_SRC/rebar.config | sed 's/^.* "//;s/".*$//')"
+      echo "setting snap version to $VER"
+      snapcraftctl set-version "$VER"
+      # build and install
+      make release && \
+      cp -av $SNAPCRAFT_PART_BUILD/_build/prod/rel/miner $SNAPCRAFT_PART_INSTALL/
+  blockchain-api:
+    after: [ miner ]
+    plugin: nil
+    override-build: |
+      mkdir -p $SNAPCRAFT_PART_INSTALL/miner/update
+      wget https://github.com/helium/blockchain-api/raw/master/priv/prod/genesis \
+        --output-document=$SNAPCRAFT_PART_INSTALL/miner/update/genesis
+    build-packages:
+      - wget
