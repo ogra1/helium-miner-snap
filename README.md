@@ -22,7 +22,7 @@ be connected before the miner daemon can start.
     snap connect helium-miner:network-control
 
 If you run this snap on an officially approved helium hotspot, you can allow
-acess to an i2c attached key via
+access to an i2c attached key via
 
     snap connect helium-miner:i2c pi:i2c-1
 
