@@ -131,6 +131,7 @@ parts:
       - libssl-dev
       - libtool
     stage-packages:
+      - libodbc1
       - libsodium23
     build-environment:
       - PATH: "${SNAPCRAFT_STAGE}/usr/lib/erlang/bin:$PATH"
